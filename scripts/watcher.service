@@ -1,0 +1,18 @@
+[Unit]
+Description=YT Strategy Agent watcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/yt-strategy-agent
+EnvironmentFile=/root/yt-strategy-agent/.env
+ExecStart=/root/yt-strategy-agent/.venv/bin/python /root/yt-strategy-agent/watcher.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -67,7 +67,43 @@ Run `python ingest.py --once`. Show them the first strategy.md as it gets genera
 
 > **If the transcript fetch fails** (rate limited, IP blocked, or no captions): tell them YouTube sometimes blocks cloud IPs from pulling transcripts, and the rock-solid fix is using Apify (a scraping service that handles it reliably). Ask: "Want me to set that up? It's a few pence per month for typical use." If yes, run `open "https://apify.com?fpr=3ly3yd"`, walk them through signing up, then: Settings → Integrations → API tokens → copy the token → paste here. Append `APIFY_API_TOKEN=...` to `.env`. Re-run `python ingest.py --once` — `ingest.py` auto-detects the token and uses Apify (`pintostudio/youtube-transcript-scraper`) instead of `youtube-transcript-api`.
 
-### Step 8 — Provision the VPS (Hostinger)
+### Step 8 — Alerts (pick how you want to be told)
+Tell them: "When a watched channel changes their strategy, calls a new trade, or posts a new video, do you want a ping? Pick one or more: **email**, **Telegram**, **Slack**, or **none**." Then run the matching sub-flow. All three write to `.env` and `alerts.yaml`. The watcher fires alerts on three event types: `new_video`, `strategy_shift`, `new_trade`.
+
+**8a — Email (SMTP via Resend)**
+Easiest. Open `https://resend.com/signup` for them. Walk through: sign up → API Keys → Create API Key → copy. Ask which inbox to send to. Write to `.env`:
+```
+RESEND_API_KEY=...
+ALERT_EMAIL_TO=lewis@example.com
+ALERT_EMAIL_FROM=alerts@<their-verified-domain or onboarding@resend.dev>
+```
+Send a test email immediately: `python alerts.py --test email`.
+
+**8b — Telegram**
+Open `https://t.me/BotFather` for them (it'll launch the Telegram desktop/web app). Tell them: send `/newbot`, name it `<their-name>-yt-alerts`, copy the bot token BotFather replies with. Then: "Now message your new bot once — say anything. I need to grab your chat ID." Run `python alerts.py --get-chat-id` (it polls Telegram's `getUpdates` until it sees their message). Write to `.env`:
+```
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHAT_ID=...
+```
+Test: `python alerts.py --test telegram`.
+
+**8c — Slack**
+Open `https://api.slack.com/apps?new_app=1` for them. Walk through: From scratch → name `yt-strategy-agent` → pick workspace → Incoming Webhooks → Activate → Add New Webhook to Workspace → pick channel → copy webhook URL. Write to `.env`:
+```
+SLACK_WEBHOOK_URL=...
+```
+Test: `python alerts.py --test slack`.
+
+After whichever they picked, write `alerts.yaml`:
+```yaml
+channels: [email, telegram, slack]   # only the ones they set up
+events:
+  new_video: true
+  strategy_shift: true
+  new_trade: true
+```
+
+### Step 9 — Provision the VPS (Hostinger)
 Tell them: "Now we put it on a small cloud computer so it runs while you sleep."
 
 1. `open "https://www.hostinger.com/uk?REFERRALCODE=EGBLEWISRZT6"` — say "this is my referral link, it gives you a discount and helps me keep making these tutorials."
@@ -77,19 +113,20 @@ Tell them: "Now we put it on a small cloud computer so it runs while you sleep."
 5. Set a strong root password and save it to their password manager.
 6. Wait for the VPS to provision (Hostinger emails the IP). Ask them to paste the IP address here.
 
-### Step 9 — Bootstrap the VPS
-Once they paste the IP, run the bootstrap script for them locally — it SSHes in, installs Python, clones the repo, copies `.env`, `client_secret.json`, `token.pickle`, and `channels.yaml` over via `scp`, installs the systemd unit, and starts the service:
+### Step 10 — Bootstrap the VPS
+Once they paste the IP, run the bootstrap script for them locally — it SSHes in, installs Python, clones the repo, copies `.env`, `client_secret.json`, `token.pickle`, `channels.yaml`, and `alerts.yaml` over via `scp`, installs the systemd unit, and starts the service:
 ```
 ./scripts/bootstrap_vps.sh <ip> <root-password>
 ```
 Show them `systemctl status watcher` output. Celebrate again — it's running.
 
-### Step 10 — Hand-off
+### Step 11 — Hand-off
 Tell them:
 - "Your strategy docs live at `~/yt-strategy-agent/channels/<handle>/strategy.md` on the VPS."
-- "I've set up a daily email digest — check your inbox tomorrow morning." (Only if they want it; ask first.)
-- "When a watched channel changes their strategy, you'll see it logged in `changelog.md`."
+- "Alerts will hit your <email/Telegram/Slack> whenever a new video drops, the strategy shifts, or a new trade is called."
+- "Strategy changes are also logged forever in `changelog.md` per channel."
 - "To add a new channel later, just SSH in and edit `channels.yaml` — the watcher picks it up on the next cycle."
+- "To change which alerts you get, edit `alerts.yaml`."
 
 End with: "You're done. Go enjoy your day ☕"
 
@@ -107,7 +144,9 @@ yt-strategy-agent/
   weighting.py             Recency weighting + similarity grouping
   change_detect.py         Strategy-shift detection
   store.py                 SQLite + markdown IO
+  alerts.py                Email/Telegram/Slack dispatch + --test, --get-chat-id
   channels.yaml            User-edited list of channels
+  alerts.yaml              Which alert channels + which events fire
   requirements.txt
   scripts/
     bootstrap_vps.sh       One-shot VPS setup over SSH
@@ -168,15 +207,49 @@ for channel in load("channels.yaml"):
     latest_5 = youtube.uploads_playlist(channel.id, limit=5)
     for video in latest_5:
         if not store.seen(video.id):
+            alerts.fire("new_video", channel, video)
             transcript = fetch_transcript(video.id)
             extracted = claude_extract(transcript, system_prompt_cached=True)
             store.write_video(channel, video, extracted)
-            change_detect.diff_and_log(channel, extracted)
+            shift = change_detect.diff_and_log(channel, extracted)
+            if shift: alerts.fire("strategy_shift", channel, video, shift)
+            for trade in extracted.executed_trades:
+                alerts.fire("new_trade", channel, video, trade)
             weighting.rebuild_rules(channel, window=latest_5)
             store.mark_seen(video.id)
     store.prune_window(channel, latest_5)
 sleep(600)
 ```
+
+### Alerts module (`alerts.py`)
+```python
+def fire(event_type, channel, video, payload=None):
+    cfg = load("alerts.yaml")
+    if not cfg.events.get(event_type): return
+    msg = render(event_type, channel, video, payload)  # short title + 3-line body + link
+    if "email"    in cfg.channels: send_email(msg)     # via Resend HTTP API
+    if "telegram" in cfg.channels: send_telegram(msg)  # via Bot API sendMessage
+    if "slack"    in cfg.channels: send_slack(msg)     # via incoming webhook POST
+```
+Message format (keep it short — these go to phones):
+```
+🎬 New video — <channel name>
+"<video title>"
+https://youtu.be/<id>
+
+⚠️ Strategy shift detected — <channel name>
+What changed: <one line>
+Prior: <one line>
+New: <one line>
+Source: https://youtu.be/<id>
+
+📈 New trade called — <channel name>
+<asset> · <long/short> · entry <x> · exit <y>
+Source: https://youtu.be/<id>
+```
+CLI helpers:
+- `python alerts.py --test email|telegram|slack` — sends a hello-world message
+- `python alerts.py --get-chat-id` — polls `getUpdates` until it sees a message, prints + saves the chat ID
 
 ### Cost note (tell the user once)
 - Hostinger KVM 2: ~£6/mo
@@ -221,7 +294,7 @@ WantedBy=multi-user.target
 2. `ssh-copy-id` if no key, otherwise use sshpass with the password the user gave
 3. `apt update && apt install -y python3.11 python3.11-venv git`
 4. `git clone` the repo into `/root/yt-strategy-agent`
-5. `scp` over `.env`, `client_secret.json`, `token.pickle`, `channels.yaml`
+5. `scp` over `.env`, `client_secret.json`, `token.pickle`, `channels.yaml`, `alerts.yaml`
 6. Create venv + `pip install -r requirements.txt`
 7. Install systemd unit, `systemctl enable --now watcher`
 8. Tail logs for 30 seconds so the user sees it working

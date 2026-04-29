@@ -9,6 +9,11 @@ For every channel you watch, you get:
 - **trades.md** — executed trades the host called out
 - **videos/<id>.md** — per-video extracted notes + transcript
 
+Plus alerts to your **email**, **Telegram**, or **Slack** (your choice — pick one or all three) whenever:
+- a new video drops
+- the deduced strategy shifts
+- a new trade is called out
+
 Newer videos are weighted more heavily, similar rules are grouped automatically, and strategy changes get flagged the moment they happen.
 
 ## How to set it up
@@ -72,7 +77,9 @@ extract.py           Claude prompt + JSON schema
 weighting.py         Recency weighting + similarity grouping
 change_detect.py     Strategy-shift detection
 store.py             SQLite + markdown IO
+alerts.py            Email / Telegram / Slack dispatch
 channels.yaml        Channels to watch (you edit this)
+alerts.yaml          Which alert channels + which events fire
 scripts/
   bootstrap_vps.sh   One-shot SSH + install onto Hostinger
   watcher.service    systemd unit
