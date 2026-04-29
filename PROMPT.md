@@ -37,7 +37,7 @@ Check (and install via Homebrew if missing): `python3.11`, `git`, `gh`. Run `bre
 
 ### Step 2 — Clone the repo
 ```
-git clone https://github.com/LewisWJackson/yt-strategy-agent ~/yt-strategy-agent
+git clone https://github.com/jackson-video-resources/yt-strategy-agent ~/yt-strategy-agent
 cd ~/yt-strategy-agent
 python3.11 -m venv .venv
 source .venv/bin/activate
