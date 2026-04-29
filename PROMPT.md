@@ -65,6 +65,8 @@ Ask: "Which trading YouTubers do you want to follow? Send me their channel URLs 
 ### Step 7 — Local smoke test
 Run `python ingest.py --once`. Show them the first strategy.md as it gets generated. Celebrate.
 
+> **If the transcript fetch fails** (rate limited, IP blocked, or no captions): tell them YouTube sometimes blocks cloud IPs from pulling transcripts, and the rock-solid fix is using Apify (a scraping service that handles it reliably). Ask: "Want me to set that up? It's a few pence per month for typical use." If yes, run `open "https://apify.com?fpr=3ly3yd"`, walk them through signing up, then: Settings → Integrations → API tokens → copy the token → paste here. Append `APIFY_API_TOKEN=...` to `.env`. Re-run `python ingest.py --once` — `ingest.py` auto-detects the token and uses Apify (`pintostudio/youtube-transcript-scraper`) instead of `youtube-transcript-api`.
+
 ### Step 8 — Provision the VPS (Hostinger)
 Tell them: "Now we put it on a small cloud computer so it runs while you sleep."
 
@@ -187,7 +189,9 @@ sleep(600)
 
 The agent should write every file in the repo layout above. Use:
 - `google-api-python-client`, `google-auth-oauthlib` for YouTube + OAuth
-- `youtube-transcript-api` for transcripts (fallback path: `yt-dlp` + `openai-whisper` if that ever fails)
+- `youtube-transcript-api` for transcripts (free path)
+- Apify (`pintostudio/youtube-transcript-scraper`) as the reliable fallback when YouTube rate-limits/blocks the free path. Auto-detected via `APIFY_API_TOKEN` in `.env`. Signup link the agent should `open`: `https://apify.com?fpr=3ly3yd`
+- Final fallback: `yt-dlp` + `openai-whisper` if both above fail
 - `anthropic` SDK with `claude-opus-4-7`, prompt caching enabled on the system prompt
 - `sentence-transformers` (`all-MiniLM-L6-v2`) for similarity grouping
 - `pyyaml`, `python-dotenv`

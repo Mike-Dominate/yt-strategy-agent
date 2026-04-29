@@ -27,6 +27,7 @@ This repo is designed to be set up by an AI agent walking you through it.
 - **Hostinger KVM 2 VPS:** ~£6/month — [get your account here](https://www.hostinger.com/uk?REFERRALCODE=EGBLEWISRZT6)
 - **Anthropic API:** ~£0.10–£0.50/month for typical use
 - **YouTube Data API:** free
+- **Apify** (optional, only if YouTube blocks transcript pulls from the VPS): a few pence/month — [sign up here](https://apify.com?fpr=3ly3yd)
 
 ## How it works under the hood
 
