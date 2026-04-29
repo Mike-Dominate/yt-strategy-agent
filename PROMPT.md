@@ -45,7 +45,7 @@ pip install -r requirements.txt
 ```
 
 ### Step 3 — Anthropic API key
-Open `https://console.anthropic.com/settings/keys` for them. Tell them: "Click 'Create Key', name it `yt-strategy-agent`, copy the key, paste it here." When they paste, write it to `.env` as `ANTHROPIC_API_KEY=...`.
+Run `open "https://console.anthropic.com/settings/keys"` so the keys page launches in their browser right now. Tell them: "On that page: click **Create Key**, name it `yt-strategy-agent`, copy the key, paste it back to me here." When they paste, write it to `.env` as `ANTHROPIC_API_KEY=...`.
 
 ### Step 4 — Google Cloud + YouTube Data API
 Walk them through this sequence, opening each tab as they finish the previous step:
@@ -70,14 +70,41 @@ Run `python ingest.py --once`. Show them the first strategy.md as it gets genera
 ### Step 8 — Alerts (pick how you want to be told)
 Tell them: "When a watched channel changes their strategy, calls a new trade, or posts a new video, do you want a ping? Pick one or more: **email**, **Telegram**, **Slack**, or **none**." Then run the matching sub-flow. All three write to `.env` and `alerts.yaml`. The watcher fires alerts on three event types: `new_video`, `strategy_shift`, `new_trade`.
 
-**8a — Email (SMTP via Resend)**
-Easiest. Open `https://resend.com/signup` for them. Walk through: sign up → API Keys → Create API Key → copy. Ask which inbox to send to. Write to `.env`:
-```
-RESEND_API_KEY=...
-ALERT_EMAIL_TO=lewis@example.com
-ALERT_EMAIL_FROM=alerts@<their-verified-domain or onboarding@resend.dev>
-```
-Send a test email immediately: `python alerts.py --test email`.
+**8a — Email (Gmail-first, Resend fallback)**
+
+Gmail is the easiest path by far — alerts come from the user's own address, no third-party signup. The watcher runs on the VPS though, so we can't use the in-session Gmail MCP at runtime; we use the MCP's presence as a signal that the user has Gmail and is already signed in, then walk them through generating an App Password so the VPS can send via Gmail SMTP under their address.
+
+First, check your own toolset right now: do you have any `mcp__*Gmail*` tools available (e.g. `mcp__claude_ai_Gmail__create_draft`)?
+
+- **If yes** → Gmail is already connected to this Claude Code session. Tell the user: "Your Gmail's already connected — easiest path is to let the bot send alerts from your own Gmail address. I'll set you up with a one-click App Password so it works from the cloud server too." Then:
+  1. Run `open "https://myaccount.google.com/apppasswords"` — they're already signed in, so this lands them straight on the App Passwords page.
+  2. Tell them: "Type `yt-strategy-agent` as the app name and click **Create**. Copy the 16-character password it shows you and paste it back here."
+  3. Ask which Gmail address they're using and which inbox to send alerts to (default: same address).
+  4. Write to `.env`:
+     ```
+     ALERT_EMAIL_PROVIDER=gmail_smtp
+     GMAIL_USER=lewis@gmail.com
+     GMAIL_APP_PASSWORD=xxxxxxxxxxxxxxxx
+     ALERT_EMAIL_TO=lewis@gmail.com
+     ```
+  5. Send a test: `python alerts.py --test email` (uses `smtplib` against `smtp.gmail.com:587`). Bonus: while you have MCP access, also send a test draft via the Gmail MCP so they see it land in their inbox immediately as a sanity check.
+
+- **If no** → Tell them: "Quickest setup is to connect your Gmail in Claude Code — alerts then come from your own address with no extra signup. Takes 30 seconds." Walk them through it:
+  1. Click the **Settings** icon (top-right of the Claude Code window).
+  2. Open **Connectors** (or **Connections** / **Integrations** depending on version).
+  3. Find **Gmail** in the list and click **Connect**.
+  4. Sign in with the Google account they want alerts sent from. Approve the scopes.
+  5. Come back to this chat and say "done".
+  Once they say done, re-check your toolset — Gmail tools should now be present. Proceed as the "yes" branch above (App Password flow).
+
+- **If they refuse Gmail or it won't connect** → Fall back to Resend. Run `open "https://resend.com/signup"`. Walk through: sign up → API Keys → Create API Key → copy. Write to `.env`:
+  ```
+  ALERT_EMAIL_PROVIDER=resend
+  RESEND_API_KEY=...
+  ALERT_EMAIL_TO=lewis@example.com
+  ALERT_EMAIL_FROM=onboarding@resend.dev
+  ```
+  Test: `python alerts.py --test email`.
 
 **8b — Telegram**
 Open `https://t.me/BotFather` for them (it'll launch the Telegram desktop/web app). Tell them: send `/newbot`, name it `<their-name>-yt-alerts`, copy the bot token BotFather replies with. Then: "Now message your new bot once — say anything. I need to grab your chat ID." Run `python alerts.py --get-chat-id` (it polls Telegram's `getUpdates` until it sees their message). Write to `.env`:
@@ -227,7 +254,7 @@ def fire(event_type, channel, video, payload=None):
     cfg = load("alerts.yaml")
     if not cfg.events.get(event_type): return
     msg = render(event_type, channel, video, payload)  # short title + 3-line body + link
-    if "email"    in cfg.channels: send_email(msg)     # via Resend HTTP API
+    if "email"    in cfg.channels: send_email(msg)     # routes by ALERT_EMAIL_PROVIDER: gmail_smtp | resend
     if "telegram" in cfg.channels: send_telegram(msg)  # via Bot API sendMessage
     if "slack"    in cfg.channels: send_slack(msg)     # via incoming webhook POST
 ```

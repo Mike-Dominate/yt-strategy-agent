@@ -76,3 +76,48 @@ def extract_from_transcript(transcript: str, video_title: str) -> dict:
             text = text[4:]
         text = text.strip().rstrip("`").strip()
     return json.loads(text)
+
+
+_IMPACT_SYSTEM = """You are a trading-strategy reviewer. The user runs a paper-trading system that reads a "strategy spec" markdown file and executes signals.
+
+Given (a) the spec, (b) a fresh extraction from a new video by the same host, write a 3-5 sentence brief covering:
+1. Whether this video changes the spec's bias (long / flat / short).
+2. Whether any explicit invalidation level mentioned in the spec is now closer or further from triggering.
+3. Whether tranche size, entry zones, or take-profit levels need adjusting based on what the host said.
+4. One concrete action (or "no action — bias intact") for the next 24 hours.
+
+Be plain-spoken, no hedging adverbs. Do not invent numbers the host didn't say."""
+
+
+def summarize_impact(
+    extraction: dict, video_title: str, strategy_spec: str | None
+) -> str:
+    spec_block = (
+        f"Current spec:\n{strategy_spec.strip()}\n\n"
+        if strategy_spec
+        else "(No paper-trading spec exists yet for this channel — return: 'No tradable spec for this channel; this video updates the macro view only.')\n\n"
+    )
+    user = (
+        spec_block
+        + f"New video: {video_title}\n\n"
+        + f"Extracted JSON:\n{json.dumps(extraction, indent=2)}\n\n"
+        + "Write the brief now."
+    )
+    try:
+        resp = _client().messages.create(
+            model=MODEL,
+            max_tokens=600,
+            system=[
+                {
+                    "type": "text",
+                    "text": _IMPACT_SYSTEM,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            messages=[{"role": "user", "content": user}],
+        )
+        return "".join(
+            block.text for block in resp.content if hasattr(block, "text")
+        ).strip()
+    except Exception as exc:
+        return f"(impact summary failed: {exc})"

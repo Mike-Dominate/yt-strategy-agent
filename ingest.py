@@ -11,11 +11,14 @@ from googleapiclient.discovery import build
 
 from auth import get_credentials
 from change_detect import detect_and_log
-from extract import extract_from_transcript
+from extract import extract_from_transcript, summarize_impact
+from notify import build_email_body, send_email
 from transcript import fetch_transcripts
 from store import (
+    channel_dir,
     latest_extractions,
     mark_seen,
+    read_rules_json,
     seen,
     write_rules_json,
     write_strategy_md,
@@ -85,8 +88,9 @@ def process_channel(yt, channel: dict) -> int:
         except Exception as exc:
             print(f"    ! extraction failed: {exc}")
             continue
+        prior_rules = read_rules_json(handle)
         write_video_md(handle, vid, video["title"], video["published_at"], extraction)
-        detect_and_log(handle, vid, video["title"], extraction)
+        change_logged = detect_and_log(handle, vid, video["title"], extraction)
         mark_seen(
             channel["id"],
             handle,
@@ -95,15 +99,13 @@ def process_channel(yt, channel: dict) -> int:
             video["published_at"],
             extraction,
         )
-        new_count += 1
-    extractions = latest_extractions(channel["id"], WINDOW)
-    if extractions:
-        rules = rebuild([e["extraction"] for e in extractions])
-        write_rules_json(handle, rules)
+        extractions = latest_extractions(channel["id"], WINDOW)
+        new_rules = rebuild([e["extraction"] for e in extractions])
+        write_rules_json(handle, new_rules)
         write_strategy_md(
             handle,
             title,
-            rules,
+            new_rules,
             sources=[
                 {
                     "video_id": e["video_id"],
@@ -113,9 +115,50 @@ def process_channel(yt, channel: dict) -> int:
                 for e in extractions
             ],
         )
-        print(
-            f"  → strategy.md updated ({len(extractions)} videos in window, {new_count} new this pass)"
-        )
+        spec_path = channel_dir(handle) / "strategy_spec.md"
+        spec_text = spec_path.read_text() if spec_path.exists() else None
+        try:
+            impact = summarize_impact(extraction, video["title"], spec_text)
+        except Exception as exc:
+            impact = f"(impact summary failed: {exc})"
+        try:
+            body = build_email_body(
+                channel_title=title,
+                channel_handle=handle,
+                video=video,
+                extraction=extraction,
+                prior_rules=prior_rules,
+                new_rules=new_rules,
+                change_logged=change_logged,
+                impact_paragraph=impact,
+                strategy_spec=spec_text,
+            )
+            shift_tag = " ⚠ SHIFT" if change_logged else ""
+            subject = f"[YT Strategy] {title}: {video['title'][:80]}{shift_tag}"
+            send_email(subject, body)
+            print(f"    ✉  email sent for {vid}")
+        except Exception as exc:
+            print(f"    ! email failed: {exc}", file=sys.stderr)
+        new_count += 1
+    if new_count == 0:
+        extractions = latest_extractions(channel["id"], WINDOW)
+        if extractions and not (channel_dir(handle) / "strategy.md").exists():
+            rules = rebuild([e["extraction"] for e in extractions])
+            write_rules_json(handle, rules)
+            write_strategy_md(
+                handle,
+                title,
+                rules,
+                sources=[
+                    {
+                        "video_id": e["video_id"],
+                        "title": e["title"],
+                        "published_at": e["published_at"],
+                    }
+                    for e in extractions
+                ],
+            )
+    print(f"  → {new_count} new video(s) processed this pass")
     return new_count
 
 
