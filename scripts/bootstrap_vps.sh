@@ -5,8 +5,8 @@
 # Usage:
 #   ./scripts/bootstrap_vps.sh <ip> <root-password>
 #
-# Run from the repo root on your laptop, AFTER the local smoke test passed.
-# Requires sshpass (brew install hudochenkov/sshpass/sshpass).
+# Run from the repo root on your operator machine, AFTER the local smoke test passed.
+# Requires sshpass (apt install sshpass on Linux).
 
 set -euo pipefail
 
@@ -20,10 +20,10 @@ fi
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REMOTE="root@${IP}"
-REMOTE_DIR="/root/yt-strategy-agent"
+REMOTE_DIR="/srv/ai-hub/workspaces/yt-strategy-agent"
 
 if ! command -v sshpass >/dev/null 2>&1; then
-  echo "sshpass not found. Install with: brew install hudochenkov/sshpass/sshpass" >&2
+  echo "sshpass not found. Install with: apt install sshpass" >&2
   exit 1
 fi
 
@@ -39,11 +39,14 @@ done
 
 echo "→ Installing Python, git, and tooling..."
 ssh_run "DEBIAN_FRONTEND=noninteractive apt-get update -qq && \
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3.11 python3.11-venv python3-pip git ca-certificates"
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3.11 python3.11-venv python3-pip git ca-certificates rsync"
+
+echo "→ Creating runtime directories..."
+ssh_run "mkdir -p /srv/ai-hub/workspaces && mkdir -p $REMOTE_DIR"
 
 echo "→ Cloning repo to $REMOTE_DIR..."
 ssh_run "rm -rf $REMOTE_DIR && \
-  git clone https://github.com/jackson-video-resources/yt-strategy-agent $REMOTE_DIR"
+  git clone https://github.com/Mike-Dominate/yt-strategy-agent $REMOTE_DIR"
 
 echo "→ Copying secrets and config..."
 for f in .env client_secret.json token.pickle channels.yaml; do

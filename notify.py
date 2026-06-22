@@ -11,12 +11,14 @@ from pathlib import Path
 from typing import Iterable
 
 from dotenv import dotenv_values
+from logging_utils import get_logger
+from settings import EMAIL_ENABLED, ROOT
 
-ROOT = Path(__file__).parent
 _ENV = {
     **dotenv_values(ROOT / ".env"),
     **{k: v for k, v in os.environ.items() if k.startswith("SMTP_") or k == "EMAIL_TO"},
 }
+logger = get_logger("notify")
 
 
 def _cfg() -> dict[str, str]:
@@ -126,6 +128,9 @@ def build_email_body(
 
 
 def send_email(subject: str, body: str) -> None:
+    if not EMAIL_ENABLED:
+        logger.info("email disabled, skipping subject=%s", subject)
+        return
     cfg = _cfg()
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject

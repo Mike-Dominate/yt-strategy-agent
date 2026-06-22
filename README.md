@@ -16,16 +16,83 @@ Plus an **email alert** to your inbox (sent from your own Gmail) whenever:
 
 Newer videos are weighted more heavily, similar rules are grouped automatically, and strategy changes get flagged the moment they happen.
 
-## How to set it up
+## Deployment target
 
-This repo is designed to be set up by an AI agent walking you through it.
+This fork is customized for:
 
-1. Install [Claude Code](https://claude.com/claude-code) (or any agent CLI of your choice).
-2. Make a fresh empty folder, `cd` into it, start Claude Code.
-3. Paste the entire contents of [`PROMPT.md`](./PROMPT.md) as your first message.
-4. Follow along — the agent opens browser tabs, runs commands, and gets you live in about 20 minutes.
+- Linux workstations and servers
+- this PC directly
+- other operator machines on the same Tailscale network
+- optional systemd background service deployment
 
-> Currently macOS only. Windows and Linux versions coming.
+It is no longer treated as macOS-only.
+
+## Quick start on Linux
+
+1. Create a virtualenv:
+   - `python3 -m venv .venv`
+   - `. .venv/bin/activate`
+2. Install dependencies:
+   - `pip install -U pip`
+   - `pip install -r requirements.txt`
+3. Copy config template:
+   - `cp .env.example .env`
+4. Fill in:
+   - `ANTHROPIC_API_KEY`
+   - `APIFY_TOKEN` if using Apify
+   - YouTube OAuth client secret path / file
+   - SMTP settings only if you want email alerts
+5. Run a one-time auth flow:
+   - `python auth.py`
+6. Test one pass:
+   - `python ingest.py --once`
+7. Run the watcher:
+   - `python watcher.py`
+
+## Runtime behavior in this fork
+
+- model is configurable through `.env`
+- transcript provider supports `auto`, `apify`, or `youtube`
+- email alerts can be disabled with `YT_EMAIL_ENABLED=false`
+- state, db, token, logs, and output directories are configurable
+- logs write both to stdout and `runtime/logs/watcher.log`
+
+## Tailscale notes
+
+This repo itself does not require Tailscale to function, but it is suitable for operators on the same Tailscale network because:
+
+- runtime paths are explicit and Linux-friendly
+- no macOS-specific bootstrap assumptions remain
+- you can keep identical repo/layout across multiple Tailscale-connected PCs
+- optional metadata fields exist in `.env` for operator labeling
+
+Recommended pattern:
+
+- clone this repo onto each authorized Tailscale machine
+- keep secrets local on each machine
+- keep generated channel outputs in the configured runtime path
+- use systemd on always-on machines
+
+## Service deployment
+
+Systemd unit provided at:
+
+- `scripts/watcher.service`
+
+Default fork paths expect:
+
+- repo: `/srv/ai-hub/workspaces/yt-strategy-agent`
+- env file: `/srv/ai-hub/workspaces/yt-strategy-agent/.env`
+- venv: `/srv/ai-hub/workspaces/yt-strategy-agent/.venv`
+
+## Customization priorities already applied in this fork
+
+- Linux-first paths
+- configurable runtime settings
+- configurable model name
+- transcript fallback support
+- optional email notifications
+- structured logging
 
 ## What it costs
 
@@ -80,13 +147,15 @@ change_detect.py     Strategy-shift detection
 store.py             SQLite + markdown IO
 notify.py            Email sender (Gmail SMTP)
 transcript.py        Apify transcript fetcher
+settings.py          Runtime configuration
+logging_utils.py     Logging setup
 channels.yaml        Channels to watch (you edit this)
 scripts/
-  bootstrap_vps.sh   One-shot SSH + install onto Hostinger
+  bootstrap_vps.sh   One-shot Linux VPS bootstrap
   watcher.service    systemd unit
 tools/
   resolve_channel.py Handle/URL → channel ID
-channels/<handle>/   Generated docs live here
+runtime/channels/<handle>/ Generated docs live here by default
 ```
 
 ## License

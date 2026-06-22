@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 
 import yaml
 from googleapiclient.discovery import build
@@ -14,6 +13,8 @@ from change_detect import detect_and_log
 from extract import extract_from_transcript, summarize_impact
 from notify import build_email_body, send_email
 from transcript import fetch_transcripts
+from logging_utils import get_logger
+from settings import CHANNELS_FILE, YOUTUBE_WINDOW
 from store import (
     channel_dir,
     latest_extractions,
@@ -26,16 +27,15 @@ from store import (
 )
 from weighting import rebuild
 
-ROOT = Path(__file__).parent
-WINDOW = 5
+logger = get_logger("ingest")
 
 
 def _load_channels() -> list[dict]:
-    data = yaml.safe_load((ROOT / "channels.yaml").read_text())
+    data = yaml.safe_load(CHANNELS_FILE.read_text())
     return data.get("channels", [])
 
 
-def _latest_videos(yt, uploads_playlist: str, limit: int = WINDOW) -> list[dict]:
+def _latest_videos(yt, uploads_playlist: str, limit: int = YOUTUBE_WINDOW) -> list[dict]:
     resp = (
         yt.playlistItems()
         .list(
@@ -59,34 +59,34 @@ def _latest_videos(yt, uploads_playlist: str, limit: int = WINDOW) -> list[dict]
 def process_channel(yt, channel: dict) -> int:
     handle = channel["handle"]
     title = channel["title"]
-    print(f"\n=== {title} (@{handle})")
-    videos = _latest_videos(yt, channel["uploads_playlist"], WINDOW)
+    logger.info("processing %s (@%s)", title, handle)
+    videos = _latest_videos(yt, channel["uploads_playlist"], YOUTUBE_WINDOW)
     if not videos:
-        print("  no uploads found")
+        logger.info("no uploads found for %s", handle)
         return 0
     unseen = [v for v in videos if not seen(v["video_id"])]
     transcripts: dict[str, str | None] = {}
     if unseen:
-        print(f"  · fetching {len(unseen)} transcript(s) via Apify...")
+        logger.info("fetching %s transcript(s) for %s", len(unseen), handle)
         try:
             transcripts = fetch_transcripts([v["video_id"] for v in unseen])
         except Exception as exc:
-            print(f"  ! Apify transcript fetch failed: {exc}", file=sys.stderr)
+            logger.warning("transcript fetch failed for %s: %s", handle, exc)
     new_count = 0
     for video in videos:
         vid = video["video_id"]
         if seen(vid):
-            print(f"  · seen   {vid}  {video['title'][:60]}")
+            logger.info("seen %s %s", vid, video['title'][:60])
             continue
-        print(f"  + fetch  {vid}  {video['title'][:60]}")
+        logger.info("fetch %s %s", vid, video['title'][:60])
         transcript = transcripts.get(vid)
         if not transcript:
-            print(f"    (no transcript available — skipping)")
+            logger.info("no transcript available for %s, skipping", vid)
             continue
         try:
             extraction = extract_from_transcript(transcript[:60000], video["title"])
         except Exception as exc:
-            print(f"    ! extraction failed: {exc}")
+            logger.warning("extraction failed for %s: %s", vid, exc)
             continue
         prior_rules = read_rules_json(handle)
         write_video_md(handle, vid, video["title"], video["published_at"], extraction)
@@ -99,7 +99,7 @@ def process_channel(yt, channel: dict) -> int:
             video["published_at"],
             extraction,
         )
-        extractions = latest_extractions(channel["id"], WINDOW)
+        extractions = latest_extractions(channel["id"], YOUTUBE_WINDOW)
         new_rules = rebuild([e["extraction"] for e in extractions])
         write_rules_json(handle, new_rules)
         write_strategy_md(
@@ -136,12 +136,12 @@ def process_channel(yt, channel: dict) -> int:
             shift_tag = " ⚠ SHIFT" if change_logged else ""
             subject = f"[YT Strategy] {title}: {video['title'][:80]}{shift_tag}"
             send_email(subject, body)
-            print(f"    ✉  email sent for {vid}")
+            logger.info("notification/email processed for %s", vid)
         except Exception as exc:
-            print(f"    ! email failed: {exc}", file=sys.stderr)
+            logger.warning("email/notification failed for %s: %s", vid, exc)
         new_count += 1
     if new_count == 0:
-        extractions = latest_extractions(channel["id"], WINDOW)
+        extractions = latest_extractions(channel["id"], YOUTUBE_WINDOW)
         if extractions and not (channel_dir(handle) / "strategy.md").exists():
             rules = rebuild([e["extraction"] for e in extractions])
             write_rules_json(handle, rules)
@@ -158,7 +158,7 @@ def process_channel(yt, channel: dict) -> int:
                     for e in extractions
                 ],
             )
-    print(f"  → {new_count} new video(s) processed this pass")
+    logger.info("%s new video(s) processed this pass for %s", new_count, handle)
     return new_count
 
 
@@ -178,4 +178,4 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     new = run_once()
-    print(f"\nDone. {new} new video(s) processed.")
+    logger.info("done. %s new video(s) processed.", new)

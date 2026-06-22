@@ -5,10 +5,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=root
-WorkingDirectory=/root/yt-strategy-agent
-EnvironmentFile=/root/yt-strategy-agent/.env
-ExecStart=/root/yt-strategy-agent/.venv/bin/python /root/yt-strategy-agent/watcher.py
+User=l-admin
+WorkingDirectory=/srv/ai-hub/workspaces/yt-strategy-agent
+EnvironmentFile=/srv/ai-hub/workspaces/yt-strategy-agent/.env
+ExecStart=/srv/ai-hub/workspaces/yt-strategy-agent/.venv/bin/python /srv/ai-hub/workspaces/yt-strategy-agent/watcher.py
 Restart=always
 RestartSec=10
 StandardOutput=journal

@@ -7,6 +7,8 @@ from typing import Iterable
 
 import numpy as np
 
+from settings import EMBEDDING_MODEL
+
 WEIGHTS = [1.00, 0.70, 0.50, 0.35, 0.25]
 SIMILARITY_THRESHOLD = 0.82
 MIN_EFFECTIVE_CONFIDENCE = 0.30
@@ -16,7 +18,7 @@ MIN_EFFECTIVE_CONFIDENCE = 0.30
 def _model():
     from sentence_transformers import SentenceTransformer
 
-    return SentenceTransformer("all-MiniLM-L6-v2")
+    return SentenceTransformer(EMBEDDING_MODEL)
 
 
 def _embed(texts: list[str]) -> np.ndarray:

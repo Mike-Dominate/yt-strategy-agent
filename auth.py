@@ -1,16 +1,14 @@
-"""One-shot Google OAuth flow. Writes token.pickle in the repo root."""
+"""One-shot Google OAuth flow. Writes token.pickle in the configured state dir."""
 
 from __future__ import annotations
 
 import pickle
-from pathlib import Path
 
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 
-ROOT = Path(__file__).parent
-CLIENT_SECRET = ROOT / "client_secret.json"
-TOKEN_PATH = ROOT / "token.pickle"
+from settings import CLIENT_SECRET, TOKEN_PATH
+
 SCOPES = ["https://www.googleapis.com/auth/youtube.readonly"]
 
 
@@ -26,6 +24,7 @@ def get_credentials():
     else:
         flow = InstalledAppFlow.from_client_secrets_file(str(CLIENT_SECRET), SCOPES)
         creds = flow.run_local_server(port=0)
+    TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
     with TOKEN_PATH.open("wb") as fh:
         pickle.dump(creds, fh)
     return creds

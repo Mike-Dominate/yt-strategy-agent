@@ -4,17 +4,14 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 
 from anthropic import Anthropic
-from dotenv import dotenv_values
+from anthropic import APIError
 
-ROOT = Path(__file__).parent
-_ENV = dotenv_values(ROOT / ".env")
-_API_KEY = _ENV.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
-_BASE_URL = _ENV.get("ANTHROPIC_BASE_URL") or "https://api.anthropic.com"
+from settings import ANTHROPIC_BASE_URL, ENV, LLM_MODEL, LLM_PROVIDER
 
-MODEL = "claude-opus-4-7"
+_API_KEY = ENV.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
+
 MAX_TOKENS = 4096
 
 SYSTEM_PROMPT = """You are a trading-strategy analyst. You read transcripts of trading and investing YouTube videos and extract a structured representation of the host's strategy: what they buy, what they sell, how they manage risk, how they time entries and exits, and any specific trades they describe executing.
@@ -45,7 +42,9 @@ Rules:
 def _client() -> Anthropic:
     if not _API_KEY:
         raise RuntimeError("ANTHROPIC_API_KEY not found in .env")
-    return Anthropic(api_key=_API_KEY, base_url=_BASE_URL)
+    if LLM_PROVIDER != "anthropic":
+        raise RuntimeError(f"unsupported LLM provider: {LLM_PROVIDER}")
+    return Anthropic(api_key=_API_KEY, base_url=ANTHROPIC_BASE_URL)
 
 
 def extract_from_transcript(transcript: str, video_title: str) -> dict:
@@ -56,7 +55,7 @@ def extract_from_transcript(transcript: str, video_title: str) -> dict:
         "Extract the structured strategy JSON now."
     )
     resp = _client().messages.create(
-        model=MODEL,
+        model=LLM_MODEL,
         max_tokens=MAX_TOKENS,
         system=[
             {
@@ -105,7 +104,7 @@ def summarize_impact(
     )
     try:
         resp = _client().messages.create(
-            model=MODEL,
+            model=LLM_MODEL,
             max_tokens=600,
             system=[
                 {
@@ -119,5 +118,5 @@ def summarize_impact(
         return "".join(
             block.text for block in resp.content if hasattr(block, "text")
         ).strip()
-    except Exception as exc:
+    except APIError as exc:
         return f"(impact summary failed: {exc})"
