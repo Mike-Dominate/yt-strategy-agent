@@ -26,7 +26,7 @@ This fork is customized for:
 - other operator machines on the same Tailscale network
 - optional systemd background service deployment
 
-It is no longer treated as macOS-only, and it now has a Windows operating path too.
+It is now treated as a cross-platform fork for Linux and Windows.
 
 ## Quick start on Linux
 
@@ -83,7 +83,7 @@ It is no longer treated as macOS-only, and it now has a Windows operating path t
 This repo itself does not require Tailscale to function, but it is suitable for operators on the same Tailscale network because:
 
 - runtime paths are explicit and configurable
-- no macOS-specific bootstrap assumptions remain
+- no single-platform bootstrap assumptions remain
 - you can keep identical repo/layout across multiple Tailscale-connected PCs
 - optional metadata fields exist in `.env` for operator labeling
 
