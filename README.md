@@ -21,11 +21,12 @@ Newer videos are weighted more heavily, similar rules are grouped automatically,
 This fork is customized for:
 
 - Linux workstations and servers
+- Windows workstations
 - this PC directly
 - other operator machines on the same Tailscale network
 - optional systemd background service deployment
 
-It is no longer treated as macOS-only.
+It is no longer treated as macOS-only, and it now has a Windows operating path too.
 
 ## Quick start on Linux
 
@@ -49,6 +50,25 @@ It is no longer treated as macOS-only.
 7. Run the watcher:
    - `python watcher.py`
 
+## Quick start on Windows
+
+1. Install:
+   - Python 3.11+
+   - Git for Windows
+2. Open PowerShell in the repo root.
+3. Run:
+   - `scripts\bootstrap_windows.ps1`
+4. Fill in `.env`.
+5. Put `client_secret.json` in the repo root or set `YT_CLIENT_SECRET`.
+6. Run auth:
+   - `.venv\Scripts\python.exe auth.py`
+7. Run a smoke test:
+   - `.venv\Scripts\python.exe ingest.py --once`
+8. Run the watcher directly:
+   - `.venv\Scripts\python.exe watcher.py`
+9. Optional background mode:
+   - `scripts\register_windows_task.ps1`
+
 ## Runtime behavior in this fork
 
 - model is configurable through `.env`
@@ -56,12 +76,13 @@ It is no longer treated as macOS-only.
 - email alerts can be disabled with `YT_EMAIL_ENABLED=false`
 - state, db, token, logs, and output directories are configurable
 - logs write both to stdout and `runtime/logs/watcher.log`
+- defaults work with `pathlib`, so configured paths are portable across Linux and Windows
 
 ## Tailscale notes
 
 This repo itself does not require Tailscale to function, but it is suitable for operators on the same Tailscale network because:
 
-- runtime paths are explicit and Linux-friendly
+- runtime paths are explicit and configurable
 - no macOS-specific bootstrap assumptions remain
 - you can keep identical repo/layout across multiple Tailscale-connected PCs
 - optional metadata fields exist in `.env` for operator labeling
@@ -71,7 +92,8 @@ Recommended pattern:
 - clone this repo onto each authorized Tailscale machine
 - keep secrets local on each machine
 - keep generated channel outputs in the configured runtime path
-- use systemd on always-on machines
+- use systemd on Linux always-on machines
+- use Scheduled Tasks on Windows always-on machines
 
 ## Service deployment
 
@@ -79,15 +101,28 @@ Systemd unit provided at:
 
 - `scripts/watcher.service`
 
+Windows helper scripts provided at:
+
+- `scripts/bootstrap_windows.ps1`
+- `scripts/bootstrap_windows.cmd`
+- `scripts/register_windows_task.ps1`
+
 Default fork paths expect:
 
 - repo: `/srv/ai-hub/workspaces/yt-strategy-agent`
 - env file: `/srv/ai-hub/workspaces/yt-strategy-agent/.env`
 - venv: `/srv/ai-hub/workspaces/yt-strategy-agent/.venv`
 
+Windows default expectation:
+
+- repo cloned anywhere convenient, for example `C:\Users\<you>\yt-strategy-agent`
+- venv in `.venv`
+- runtime outputs under `runtime\`
+
 ## Customization priorities already applied in this fork
 
 - Linux-first paths
+- Windows bootstrap + scheduled task support
 - configurable runtime settings
 - configurable model name
 - transcript fallback support
@@ -152,6 +187,9 @@ logging_utils.py     Logging setup
 channels.yaml        Channels to watch (you edit this)
 scripts/
   bootstrap_vps.sh   One-shot Linux VPS bootstrap
+  bootstrap_windows.ps1 Windows bootstrap
+  bootstrap_windows.cmd Windows bootstrap wrapper
+  register_windows_task.ps1 Windows background task registration
   watcher.service    systemd unit
 tools/
   resolve_channel.py Handle/URL → channel ID
